@@ -1,0 +1,14 @@
+{
+    "P001": {
+        "kode": "P001",
+        "nama": "Baby Oil",
+        "harga": 15000,
+        "stok": 200
+    },
+    "P002": {
+        "kode": "P002",
+        "nama": "Produk B",
+        "harga": 15000,
+        "stok": 200
+    }
+}
