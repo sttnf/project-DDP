@@ -1,34 +1,10 @@
 [
     {
-        "timestamp": "2024-12-23 10:31:07",
-        "username": "admin",
-        "product_code": "JMK",
-        "product_name": "Baby Oil",
-        "quantity": 100,
-        "total_price": 950000
-    },
-    {
-        "waktu": "2024-12-23 11:05:27",
+        "timestamp": "2024-12-23 12:20:46",
         "username": "user",
         "kode_produk": "P001",
         "nama_produk": "Baby Oil",
-        "jumlah": 10,
-        "total": 100000
-    },
-    {
-        "waktu": "2024-12-23 11:12:19",
-        "username": "user",
-        "kode_produk": "P002",
-        "nama_produk": "Produk B",
-        "jumlah": 10,
-        "total": 150000
-    },
-    {
-        "waktu": "2024-12-23 11:28:16",
-        "username": "user",
-        "kode_produk": "P001",
-        "nama_produk": "Baby Oil",
-        "jumlah": 50,
-        "total": 500000
+        "jumlah": 2,
+        "total": 30000
     }
 ]

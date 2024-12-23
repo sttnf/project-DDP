@@ -1,148 +1,368 @@
-import streamlit as st
-import pandas as pd
-import random
-from dataclasses import dataclass, field
-from typing import List, Dict, Optional
-from datetime import date, time
+import json
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple, Union
+from dataclasses import dataclass
 
 @dataclass
-class GachaSystem:
-    """Mengelola sistem gacha dengan hadiah yang ditentukan pengguna."""
-    saran_kegiatan: List[Dict[str, str]] = field(default_factory=list)
-
-    def tambah_saran(self, kegiatan: str, deskripsi: str, durasi: str) -> None:
-        self.saran_kegiatan.append({"kegiatan": kegiatan, "deskripsi": deskripsi, "durasi": durasi})
-
-    def tarik_gacha(self) -> Optional[Dict[str, str]]:
-        return random.choice(self.saran_kegiatan) if self.saran_kegiatan else None
+class Product:
+    kode: str
+    nama: str
+    harga: int 
+    stok: int
 
 @dataclass
-class PengelolaKegiatan:
-    """Mengelola berbagai jenis kegiatan."""
-    kegiatan: Dict[str, pd.DataFrame] = field(default_factory=lambda: {
-        "kuliah": pd.DataFrame(columns=["Tanggal", "Jam Mulai", "Jam Akhir", "Kegiatan", "Status"]),
-        "rumah": pd.DataFrame(columns=["Tanggal", "Jam Mulai", "Jam Akhir", "Kegiatan", "Status"]),
-    })
-    gacha_system: GachaSystem = field(default_factory=GachaSystem)
+class Transaction:
+    timestamp: str
+    username: str
+    kode_produk: str
+    nama_produk: str
+    jumlah: int
+    total: int
 
-    def tambah_kegiatan(self, jenis_kegiatan: str, tanggal: date, jam_mulai: time, jam_akhir: time, kegiatan: str) -> None:
-        kegiatan_baru = pd.DataFrame({
-            "Tanggal": [tanggal],
-            "Jam Mulai": [jam_mulai],
-            "Jam Akhir": [jam_akhir],
-            "Kegiatan": [kegiatan],
-            "Status": ["Belum Selesai"]
-        })
-        self.kegiatan[jenis_kegiatan] = pd.concat([self.kegiatan[jenis_kegiatan], kegiatan_baru], ignore_index=True)
+class InventorySystem:
+    def __init__(self, product_file: str = './project/products.json', 
+                 transaction_file: str = './project/transactions.json'):
+        self.product_file = product_file
+        self.transaction_file = transaction_file
+        self.products: Dict[str, Product] = {}
+        self.transactions: List[Transaction] = []
+        self.load_data()
 
-    def ubah_status_kegiatan(self, jenis_kegiatan: str, index: int) -> None:
-        df = self.kegiatan[jenis_kegiatan]
-        if 0 <= index < len(df):
-            df.at[index, "Status"] = "Selesai" if df.at[index, "Status"] == "Belum Selesai" else "Belum Selesai"
+    def load_data(self) -> None:
+        """Load product and transaction data from files."""
+        try:
+            with open(self.product_file, 'r') as file:
+                products_data = json.load(file)
+                self.products = {
+                    k: Product(**v) for k, v in products_data.items()
+                }
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            print(f"Error loading products: {e}")
 
-    def tingkat_penyelesaian(self) -> float:
-        total = sum(len(df) for df in self.kegiatan.values())
-        selesai = sum(len(df[df["Status"] == "Selesai"]) for df in self.kegiatan.values())
-        return (selesai / total) * 100 if total > 0 else 0.0
+        try:
+            with open(self.transaction_file, 'r') as file:
+                transactions_data = json.load(file)
+                self.transactions = [Transaction(**t) for t in transactions_data]
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            print(f"Error loading transactions: {e}")
 
-def buat_form_kegiatan(pengelola_kegiatan: PengelolaKegiatan, jenis_kegiatan: str) -> None:
-    with st.form(key=f'{jenis_kegiatan}_form'):
-        st.subheader(f"Tambah Kegiatan {jenis_kegiatan.capitalize()}")
-        tanggal = st.date_input("Tanggal")
-        jam_mulai, jam_akhir = st.columns(2)
-        jam_mulai = jam_mulai.time_input("Jam Mulai")
-        jam_akhir = jam_akhir.time_input("Jam Akhir")
-        kegiatan = st.text_input("Kegiatan")
+    def save_data(self) -> None:
+        """Save product and transaction data to files."""
+        try:
+            with open(self.product_file, 'w') as file:
+                products_dict = {k: vars(v) for k, v in self.products.items()}
+                json.dump(products_dict, file, indent=4)
 
-        if st.form_submit_button("Tambah"):
-            if jam_akhir <= jam_mulai:
-                st.error("Jam akhir harus lebih besar dari jam mulai!")
-            elif not kegiatan.strip():
-                st.error("Kegiatan tidak boleh kosong!")
-            else:
-                pengelola_kegiatan.tambah_kegiatan(jenis_kegiatan, tanggal, jam_mulai, jam_akhir, kegiatan)
-                st.success("Kegiatan berhasil ditambahkan!")
-                st.balloons()
+            with open(self.transaction_file, 'w') as file:
+                transactions_list = [vars(t) for t in self.transactions]
+                json.dump(transactions_list, file, indent=4)
+        except IOError as e:
+            print(f"Error saving data: {e}")
 
-def tampilkan_kegiatan(pengelola_kegiatan: PengelolaKegiatan, jenis_kegiatan: str) -> None:
-    df = pengelola_kegiatan.kegiatan[jenis_kegiatan]
-    if df.empty:
-        st.info("Belum ada kegiatan yang ditambahkan.")
+    @staticmethod
+    def format_currency(amount: int) -> str:
+        """Format amount as Indonesian Rupiah."""
+        return f"Rp {amount:,}"
+
+    def display_table(self, products: List[Product]) -> None:
+        """Display products in a formatted table."""
+        headers = ["No", "Kode", "Nama", "Harga", "Stok", "Total"]
+        col_widths = [2, 8, 20, 9, 3, 9]
+        
+        # Print header
+        separator = "=" * (sum(col_widths) + len(col_widths) * 3 + 1)
+        print(separator)
+        header_format = "| " + " | ".join(f"{h:<{w}}" for h, w in zip(headers, col_widths)) + " |"
+        print(header_format)
+        print(separator)
+
+        # Print rows
+        for idx, product in enumerate(products, 1):
+            total = product.harga * product.stok
+            row = [
+                str(idx),
+                product.kode,
+                product.nama,
+                self.format_currency(product.harga),
+                str(product.stok),
+                self.format_currency(total)
+            ]
+            row_format = "| " + " | ".join(f"{val:{'^' if i == 0 else '>' if i in [3, 4, 5] else '<'}{w}}" 
+                                         for i, (val, w) in enumerate(zip(row, col_widths))) + " |"
+            print(row_format)
+        
+        print(separator)
+
+    def show_products(self, filter_by: Optional[str] = None) -> None:
+        """Display products with optional sorting."""
+        if not self.products:
+            print("\nNo products available.")
+            return
+
+        products = list(self.products.values())
+        
+        # Apply sorting if specified
+        sort_key = None
+        reverse = False
+        
+        if filter_by == "nama-asc":
+            sort_key = lambda x: x.nama
+        elif filter_by == "nama-desc":
+            sort_key = lambda x: x.nama
+            reverse = True
+        elif filter_by == "harga-asc":
+            sort_key = lambda x: x.harga
+        elif filter_by == "harga-desc":
+            sort_key = lambda x: x.harga
+            reverse = True
+
+        if sort_key:
+            products.sort(key=sort_key, reverse=reverse)
+            
+        self.display_table(products)
+
+    def add_product(self) -> None:
+        """Add a new product to inventory."""
+        print("\n=== TAMBAH PRODUK ===")
+        
+        kode = input("Kode Produk  : ").strip()
+        if kode in self.products:
+            print("\nKode produk sudah ada!")
+            return
+            
+        nama = input("Nama Produk  : ").strip()
+        
+        try:
+            harga = int(input("Harga Produk : "))
+            stok = int(input("Stok Produk  : "))
+            if harga < 0 or stok < 0:
+                print("\nHarga dan stok tidak boleh negatif!")
+                return
+        except ValueError:
+            print("\nHarga dan stok harus berupa angka!")
+            return
+
+        self.products[kode] = Product(kode=kode, nama=nama, harga=harga, stok=stok)
+        self.save_data()
+        print("\nProduk berhasil ditambahkan!")
+
+    def update_product(self) -> None:
+        """Update an existing product."""
+        print("\n=== UPDATE PRODUK ===")
+        
+        kode = input("Masukkan kode produk: ").strip()
+        product = self.products.get(kode)
+        if not product:
+            print("\nProduk tidak ditemukan!")
+            return
+            
+        print(f"\nData produk saat ini:")
+        print(f"Nama : {product.nama}")
+        print(f"Harga: {self.format_currency(product.harga)}")
+        print(f"Stok : {product.stok}")
+        
+        # Get updates
+        nama = input("\nNama baru (kosongkan jika tidak diubah): ").strip()
+        if nama:
+            product.nama = nama
+            
+        try:
+            harga = input("Harga baru (kosongkan jika tidak diubah): ").strip()
+            if harga:
+                harga = int(harga)
+                if harga < 0:
+                    raise ValueError("Harga tidak boleh negatif!")
+                product.harga = harga
+                
+            stok = input("Stok baru (kosongkan jika tidak diubah): ").strip()
+            if stok:
+                stok = int(stok)
+                if stok < 0:
+                    raise ValueError("Stok tidak boleh negatif!")
+                product.stok = stok
+        except ValueError as e:
+            print(f"\n{str(e)}")
+            return
+            
+        self.save_data()
+        print("\nProduk berhasil diupdate!")
+
+    def process_purchase(self, username: str) -> None:
+        """Process a product purchase."""
+        print("\n=== BELI PRODUK ===")
+        
+        kode = input("Masukkan kode produk: ").strip()
+        product = self.products.get(kode)
+        if not product:
+            print("\nProduk tidak ditemukan!")
+            return
+            
+        print(f"\nDetail Produk:")
+        print(f"Nama: {product.nama}")
+        print(f"Harga: {self.format_currency(product.harga)}")
+        print(f"Stok: {product.stok}")
+        
+        try:
+            jumlah = int(input("\nJumlah yang akan dibeli: "))
+            if jumlah <= 0:
+                print("\nJumlah pembelian harus lebih dari 0!")
+                return
+            if jumlah > product.stok:
+                print("\nStok tidak mencukupi!")
+                return
+        except ValueError:
+            print("\nJumlah harus berupa angka!")
+            return
+            
+        total = jumlah * product.harga
+        print(f"\nTotal: {self.format_currency(total)}")
+        if input("Konfirmasi pembelian (y/n)? ").lower() != 'y':
+            print("\nPembelian dibatalkan.")
+            return
+            
+        # Process transaction
+        product.stok -= jumlah
+        transaction = Transaction(
+            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # Changed from waktu to timestamp
+            username=username,
+            kode_produk=kode,
+            nama_produk=product.nama,
+            jumlah=jumlah,
+            total=total
+        )
+        self.transactions.append(transaction)
+        self.save_data()
+        print("\nPembelian berhasil!")
+
+    def show_transactions(self, username: str, is_admin: bool = False) -> None:
+        """Display transaction history."""
+        print("\n=== RIWAYAT TRANSAKSI ===")
+        
+        transactions = self.transactions if is_admin else [
+            t for t in self.transactions if t.username == username
+        ]
+        
+        if not transactions:
+            print("\nBelum ada transaksi.")
+            return
+            
+        headers = ["Waktu", "Username", "Produk", "Jumlah", "Total"]
+        col_widths = [19, 10, 20, 6, 15]
+        
+        separator = "=" * (sum(col_widths) + len(col_widths) * 3 + 1)
+        print(separator)
+        header_format = "| " + " | ".join(f"{h:<{w}}" for h, w in zip(headers, col_widths)) + " |"
+        print(header_format)
+        print(separator)
+        
+        for t in transactions:
+            row = [
+                t.timestamp,  # Changed from waktu to timestamp
+                t.username,
+                t.nama_produk,
+                str(t.jumlah),
+                self.format_currency(t.total)
+            ]
+            row_format = "| " + " | ".join(f"{val:{'^' if i == 3 else '>' if i == 4 else '<'}{w}}" 
+                                         for i, (val, w) in enumerate(zip(row, col_widths))) + " |"
+            print(row_format)
+        
+        print(separator)
+
+def login() -> Tuple[Optional[str], Optional[str]]:
+    """Handle user login."""
+    print("\n=== LOGIN SISTEM ===")
+    username = input("Username: ").strip()
+    password = input("Password: ").strip()
+
+    if username == "admin" and password == "admin123":
+        return "admin", username
+    elif username == "user" and password == "user123":
+        return "user", username
+    else:
+        print("\nLogin gagal!")
+        return None, None
+
+def show_menu(role: str) -> None:
+    """Display menu based on user role."""
+    print("\nMenu:")
+    if role == "admin":
+        options = [
+            "1. Tambah Produk",
+            "2. Update Produk",
+            "3. Hapus Produk",
+            "4. Urutkan Nama [A-Z]",
+            "5. Urutkan Nama [Z-A]",
+            "6. Urutkan Harga [0-9]",
+            "7. Urutkan Harga [9-0]",
+            "8. Riwayat Transaksi",
+            "0. Keluar"
+        ]
+    else:
+        options = [
+            "1. Beli Produk",
+            "2. Riwayat Transaksi",
+            "0. Keluar"
+        ]
+    print("\n".join(options))
+    print("\nPilihan: ", end="")
+
+def main() -> None:
+    """Main application loop."""
+    role, username = login()
+    if not role:
         return
+        
+    system = InventorySystem()
+    
+    while True:
+        system.show_products()
+        show_menu(role)
+        
+        try:
+            choice = int(input().strip())
+        except ValueError:
+            print("\nPilihan tidak valid!")
+            continue
 
-    st.subheader(f"Daftar Kegiatan {jenis_kegiatan.capitalize()}")
-    for idx, row in df.iterrows():
-        with st.expander(f"Kegiatan {idx + 1}", expanded=True):
-            st.write(f"**Tanggal:** {row['Tanggal']}")
-            st.write(f"**Jam Mulai:** {row['Jam Mulai']}")
-            st.write(f"**Jam Akhir:** {row['Jam Akhir']}")
-            st.write(f"**Kegiatan:** {row['Kegiatan']}")
-            st.write(f"**Status:** {row['Status']}")
-            status = "🟢 Selesai" if row['Status'] == "Selesai" else "🔴 Belum Selesai"
-            if st.button(status, key=f"{jenis_kegiatan}_status_{idx}"):
-                pengelola_kegiatan.ubah_status_kegiatan(jenis_kegiatan, idx)
-
-def buat_form_gacha(pengelola_kegiatan: PengelolaKegiatan) -> None:
-    with st.form(key='gacha_form'):
-        st.subheader("Tambah Saran Kegiatan ke Gacha")
-        kegiatan = st.text_input("Nama Kegiatan")
-        deskripsi = st.text_area("Deskripsi")
-        durasi = st.text_input("Durasi (contoh: 30 menit)")
-
-        if st.form_submit_button("Tambah ke Pool Gacha"):
-            if not all([kegiatan.strip(), deskripsi.strip(), durasi.strip()]):
-                st.error("Semua field harus diisi!")
+        if role == "admin":
+            admin_actions = {
+                1: system.add_product,
+                2: system.update_product,
+                3: lambda: print("\nFitur hapus produk belum diimplementasikan"),
+                4: lambda: system.show_products("nama-asc"),
+                5: lambda: system.show_products("nama-desc"),
+                6: lambda: system.show_products("harga-asc"),
+                7: lambda: system.show_products("harga-desc"),
+                8: lambda: system.show_transactions(username, True),
+                0: lambda: print("\nTerima kasih telah menggunakan aplikasi ini!")
+            }
+            
+            action = admin_actions.get(choice)
+            if action:
+                if choice == 0:
+                    action()
+                    break
+                action()
             else:
-                pengelola_kegiatan.gacha_system.tambah_saran(kegiatan, deskripsi, durasi)
-                st.success("Saran kegiatan berhasil ditambahkan ke pool gacha!")
-
-def main():
-    st.set_page_config(page_title="Jadwal Kegiatan", page_icon="📅", layout="wide")
-    if 'pengelola_kegiatan' not in st.session_state:
-        st.session_state.pengelola_kegiatan = PengelolaKegiatan()
-
-    st.title("📅 Jadwal Kegiatan Produktif")
-    tabs = st.tabs(["Kuliah", "Rumah", "Review", "Gacha"])
-
-    with tabs[0]:
-        buat_form_kegiatan(st.session_state.pengelola_kegiatan, "kuliah")
-        st.divider()
-        tampilkan_kegiatan(st.session_state.pengelola_kegiatan, "kuliah")
-
-    with tabs[1]:
-        buat_form_kegiatan(st.session_state.pengelola_kegiatan, "rumah")
-        st.divider()
-        tampilkan_kegiatan(st.session_state.pengelola_kegiatan, "rumah")
-
-    with tabs[2]:
-        st.subheader("Review Kegiatan")
-        rate = st.session_state.pengelola_kegiatan.tingkat_penyelesaian()
-        st.metric("Tingkat Penyelesaian", f"{rate:.1f}%")
-
-        st.subheader("Semua Kegiatan")
-        for jenis_kegiatan, df in st.session_state.pengelola_kegiatan.kegiatan.items():
-            st.write(f"### {jenis_kegiatan.capitalize()}")
-            if df.empty:
-                st.info(f"Tidak ada kegiatan untuk {jenis_kegiatan}.")
-            else:
-                st.table(df)
-
-    with tabs[3]:
-        buat_form_gacha(st.session_state.pengelola_kegiatan)
-        st.divider()
-        st.subheader("Pool Gacha")
-
-        if not st.session_state.pengelola_kegiatan.gacha_system.saran_kegiatan:
-            st.info("Pool gacha kosong.")
+                print("\nPilihan tidak valid!")
         else:
-            st.table(pd.DataFrame(st.session_state.pengelola_kegiatan.gacha_system.saran_kegiatan))
-
-        if rate >= 80 and st.button("Tarik Gacha!"):
-            saran = st.session_state.pengelola_kegiatan.gacha_system.tarik_gacha()
-            if saran:
-                st.success(f"🎉 {saran['kegiatan']} | 📝 {saran['deskripsi']} | ⏱️ {saran['durasi']}")
+            user_actions = {
+                1: lambda: system.process_purchase(username),
+                2: lambda: system.show_transactions(username),
+                0: lambda: print("\nTerima kasih telah menggunakan aplikasi ini!")
+            }
+            
+            action = user_actions.get(choice)
+            if action:
+                if choice == 0:
+                    action()
+                    break
+                action()
             else:
-                st.warning("Pool gacha kosong.")
+                print("\nPilihan tidak valid!")
+        
+        input("\nTekan Enter untuk melanjutkan...")
 
 if __name__ == "__main__":
     main()
