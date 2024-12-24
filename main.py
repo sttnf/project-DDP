@@ -20,8 +20,8 @@ class Transaction:
     total: int
 
 class InventorySystem:
-    def __init__(self, product_file: str = './project/products.json', 
-                 transaction_file: str = './project/transactions.json'):
+    def __init__(self, product_file: str = './products.json', 
+                 transaction_file: str = './transactions.json'):
         self.product_file = product_file
         self.transaction_file = transaction_file
         self.products: Dict[str, Product] = {}
