@@ -187,6 +187,19 @@ class InventorySystem:
         self.save_data()
         print("\nProduk berhasil diupdate!")
 
+    def delete_product(self) -> None:
+        """Delete a product from inventory."""
+
+        kode = input("Masukkan kode produk: ").strip()
+
+        if kode not in self.products:
+            print("\nProduk tidak ditemukan!")
+            return
+            
+        del self.products[kode]
+        self.save_data()
+        print("\nProduk berhasil dihapus!")
+
     def process_purchase(self, username: str) -> None:
         """Process a product purchase."""
         print("\n=== BELI PRODUK ===")
@@ -329,7 +342,7 @@ def main() -> None:
             admin_actions = {
                 1: system.add_product,
                 2: system.update_product,
-                3: lambda: print("\nFitur hapus produk belum diimplementasikan"),
+                3: system.delete_product,
                 4: lambda: system.show_products("nama-asc"),
                 5: lambda: system.show_products("nama-desc"),
                 6: lambda: system.show_products("harga-asc"),
